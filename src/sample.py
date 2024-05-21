@@ -1,5 +1,4 @@
 import tensorflow as tf
-
 import model
 
 def top_k_logits(logits, k):
@@ -21,7 +20,6 @@ def top_k_logits(logits, k):
        lambda: _top_k(),
     )
 
-
 def top_p_logits(logits, p):
     """Nucleus sampling"""
     batch, _ = logits.shape.as_list()
@@ -39,7 +37,6 @@ def top_p_logits(logits, p):
         logits,
     )
 
-
 def sample_sequence(*, hparams, length, start_token=None, batch_size=None, context=None, temperature=1, top_k=0, top_p=1):
     if start_token is None:
         assert context is not None, 'Specify exactly one of start_token and context!'
@@ -48,7 +45,7 @@ def sample_sequence(*, hparams, length, start_token=None, batch_size=None, conte
         context = tf.fill([batch_size, 1], start_token)
 
     def step(hparams, tokens, past=None):
-        lm_output = model.model(hparams=hparams, X=tokens, past=past, reuse=tf.AUTO_REUSE)
+        lm_output = model.model(hparams=hparams, X=tokens, past=past, reuse=tf.compat.v1.AUTO_REUSE)
 
         logits = lm_output['logits'][:, :, :hparams.n_vocab]
         presents = lm_output['present']
@@ -61,10 +58,10 @@ def sample_sequence(*, hparams, length, start_token=None, batch_size=None, conte
     with tf.name_scope('sample_sequence'):
         def body(past, prev, output):
             next_outputs = step(hparams, prev, past=past)
-            logits = next_outputs['logits'][:, -1, :]  / tf.to_float(temperature)
+            logits = next_outputs['logits'][:, -1, :] / tf.cast(temperature, tf.float32)
             logits = top_k_logits(logits, k=top_k)
             logits = top_p_logits(logits, p=top_p)
-            samples = tf.multinomial(logits, num_samples=1, output_dtype=tf.int32)
+            samples = tf.random.categorical(logits, num_samples=1, dtype=tf.int32)
             return [
                 next_outputs['presents'] if past is None else tf.concat([past, next_outputs['presents']], axis=-2),
                 samples,
@@ -93,3 +90,4 @@ def sample_sequence(*, hparams, length, start_token=None, batch_size=None, conte
         )
 
         return tokens
+

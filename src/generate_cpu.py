@@ -1,0 +1,51 @@
+import os
+import json
+import numpy as np
+import tensorflow as tf
+from src import model, sample, encoder
+
+class HParams:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+    def override_from_dict(self, values_dict):
+        for key, value in values_dict.items():
+            setattr(self, key, value)
+
+    def to_dict(self):
+        return self.__dict__
+
+def generate_text(model_name='124M', models_dir='models', length=20, temperature=1.0, top_k=40, seed=None):
+    enc = encoder.get_encoder(model_name, models_dir)
+    hparams = HParams()
+    with open(os.path.join(models_dir, model_name, 'hparams.json')) as f:
+        hparams.override_from_dict(json.load(f))
+
+    tf.compat.v1.disable_eager_execution()
+
+    context = tf.compat.v1.placeholder(tf.int32, [1, None])
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
+    output = sample.sample_sequence(
+        hparams=hparams, length=length,
+        context=context,
+        batch_size=1,
+        temperature=temperature, top_k=top_k
+    )
+
+    config = tf.compat.v1.ConfigProto(device_count={'GPU': 0})
+    saver = tf.compat.v1.train.Saver()
+
+    with tf.compat.v1.Session(config=config) as sess:
+        ckpt = tf.train.latest_checkpoint(os.path.join(models_dir, model_name))
+        saver.restore(sess, ckpt)
+
+        context_tokens = enc.encode("Once upon a time")
+        out = sess.run(output, feed_dict={context: [context_tokens]})
+        text = enc.decode(out[0])
+        print(text)
+
+if __name__ == '__main__':
+    generate_text()
+
